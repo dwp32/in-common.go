@@ -210,18 +210,57 @@ func getUserBasicInfo(netId string) (*Person, error) {
 	}
 
 	var person Person
-	// Example: Access nested fields
+	var first, middle, last string
+	// Access nested fields from JSON structure
+
+	// NetID is located at result["basic"]["net_id"]["value"]
 	basic, ok := result["basic"].(map[string]interface{})
 	if ok {
 		netID, ok := basic["net_id"].(map[string]interface{})
 		if ok {
 			value, ok := netID["value"].(string)
 			if ok {
-				fmt.Println("NetID:", value)
+				fmt.Println("Processing NetID:", value)
 				person.NetID = value
 				person.NetIDScoped = value + "@byu.edu"
 			}
 		}
+
+		// Extract Preferred First Name
+		if pfn, ok := basic["preferred_first_name"].(map[string]interface{}); ok {
+			if value, ok := pfn["value"].(string); ok {
+				fmt.Println("Preferred First Name:", value)
+				person.PreferredFirstName = value
+			}
+		}
+
+		// Extract Full Name
+
+		// Full first name
+		if firstname, ok := basic["first_name"].(map[string]interface{}); ok {
+			if value, ok := firstname["value"].(string); ok {
+				fmt.Println("First Name:", value)
+				first = value
+			}
+		}
+
+		// Full middle name
+		if middlename, ok := basic["middle_name"].(map[string]interface{}); ok {
+			if value, ok := middlename["value"].(string); ok {
+				fmt.Println("Middle Name:", value)
+				middle = value
+			}
+		}
+
+		// Full last name
+		if lastname, ok := basic["surname"].(map[string]interface{}); ok {
+			if value, ok := lastname["value"].(string); ok {
+				fmt.Println("Last Name:", value)
+				last = value
+			}
+		}
+
+		person.Name = first + " " + middle + " " + last
 	}
 
 	if err := json.Unmarshal(body, &person); err != nil {
