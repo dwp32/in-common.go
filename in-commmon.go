@@ -59,9 +59,13 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 )
+
+var Token_path = "https://api-sandbox.byu.edu/token" // Sandbox URL
+// var Token_path = "https://api.byu.edu/edu/token" // Production URL
 
 var Token string
 
@@ -82,6 +86,29 @@ type Person struct {
 }
 
 // This is the structure that contains all of the information. All or parts may be returned, depend
+
+func startTimer(duration time.Duration) {
+	timer := time.NewTimer(duration)
+
+	// Load API credentials from JSON file
+	user, pass, err := loadAPICreds("/Users/dwp32/APICreds/in-common.json")
+	fmt.Println("User:", user)
+	fmt.Println("Pass:", pass)
+	if err != nil {
+		log.Fatalf("Failed to load API credentials: %v", err)
+	}
+	go func() {
+		for {
+			<-timer.C
+			fmt.Println("Token expired! Renewing...")
+
+			// Reset the timer to start again
+			timer.Reset(duration)
+			err = setGlobalToken(Token_path, user, pass)
+			fmt.Println("Token is now: ", Token)
+		}
+	}()
+}
 
 func loadAPICreds(filename string) (string, string, error) {
 
@@ -126,7 +153,7 @@ func setGlobalToken(endpoint, user, pass string) error {
 
 	// Read and decode the response
 	body, _ := io.ReadAll(resp.Body)
-	fmt.Println("Raw response:", string(body)) // helpful for debugging
+	//fmt.Println("Raw response:", string(body)) // helpful for debugging
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to get token: %s", resp.Status)
@@ -147,7 +174,7 @@ func setGlobalToken(endpoint, user, pass string) error {
 		}
 	}
 
-	fmt.Println("Token:", Token)
+	//	fmt.Println("Token:", Token)
 	return nil
 }
 
@@ -206,9 +233,6 @@ func getUserBasicInfo(netId string) (*Person, error) {
 
 func main() {
 
-	var Token_path = "https://api-sandbox.byu.edu/token" // Sandbox URL
-	// var Token_path = "https://api.byu.edu/edu/token" // Production URL
-
 	// Load API credentials from JSON file
 
 	user, pass, err := loadAPICreds("/Users/dwp32/APICreds/in-common.json")
@@ -218,8 +242,13 @@ func main() {
 		log.Fatalf("Failed to load API credentials: %v", err)
 	}
 
-	// Get the token
+	// Set the initial global token
 	err = setGlobalToken(Token_path, user, pass)
+
+	// Renew the global token as needed. Here we set it to renew every 10 seconds for testing purposes. In production, set it to 3500 seconds (just before the 1 hour expiration).
+	// The timer runs in a separate goroutine.
+	startTimer(10 * time.Second)
+
 	if err != nil {
 		log.Fatalf("Failed to get token: %v", err)
 	}
