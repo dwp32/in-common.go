@@ -63,6 +63,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
+var Token string
+
 type APICreds struct {
 	APIUser string `json:"API_USER"`
 	APIPass string `json:"API_PASS"`
@@ -97,7 +99,9 @@ func loadAPICreds(filename string) (string, string, error) {
 	return creds.APIUser, creds.APIPass, nil
 }
 
-func getToken(endpoint, user, pass string) (string, error) {
+func setGlobalToken(endpoint, user, pass string) error {
+
+	var ok bool
 	// Build form body
 	form := url.Values{}
 	form.Add("grant_type", "client_credentials")
@@ -105,7 +109,7 @@ func getToken(endpoint, user, pass string) (string, error) {
 	// Create POST request with the form body
 	req, err := http.NewRequest("POST", endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	// Set headers
@@ -116,7 +120,7 @@ func getToken(endpoint, user, pass string) (string, error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer resp.Body.Close()
 
@@ -125,29 +129,29 @@ func getToken(endpoint, user, pass string) (string, error) {
 	fmt.Println("Raw response:", string(body)) // helpful for debugging
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to get token: %s", resp.Status)
+		return fmt.Errorf("failed to get token: %s", resp.Status)
 	}
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", err
+		return err
 	}
 
 	// Depending on the API, the key might be "access_token" instead of "token"
-	token, ok := result["access_token"].(string)
+	Token, ok = result["access_token"].(string)
 	if !ok {
 		// Try alternate key just in case
-		token, ok = result["token"].(string)
+		Token, ok = result["token"].(string)
 		if !ok {
-			return "", fmt.Errorf("token not found in response")
+			return fmt.Errorf("Token not found in response")
 		}
 	}
 
-	fmt.Println("Token:", token)
-	return token, nil
+	fmt.Println("Token:", Token)
+	return nil
 }
 
-func getUserBasicInfo(token, netId string) (*Person, error) {
+func getUserBasicInfo(netId string) (*Person, error) {
 	// Example endpoint, replace with actual
 	endpoint := fmt.Sprintf("https://api-sandbox.byu.edu/byuapi/persons/v4/%s", netId)
 
@@ -156,7 +160,7 @@ func getUserBasicInfo(token, netId string) (*Person, error) {
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+Token)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -215,14 +219,14 @@ func main() {
 	}
 
 	// Get the token
-	token, err := getToken(Token_path, user, pass)
+	err = setGlobalToken(Token_path, user, pass)
 	if err != nil {
 		log.Fatalf("Failed to get token: %v", err)
 	}
-	fmt.Println("Token:", token)
+	fmt.Println("Global Token:", Token)
 
 	// Get the basic user information and load into the Person struct
-	person, err := getUserBasicInfo(token, "707501789")
+	person, err := getUserBasicInfo("707501789")
 	if err != nil {
 		log.Fatalf("Failed to get user info: %v", err)
 	}
