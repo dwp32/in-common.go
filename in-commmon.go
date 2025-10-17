@@ -77,7 +77,7 @@ type APICreds struct {
 type Person struct {
 	NetID              string   `json:"netId"`
 	NetIDScoped        string   `json:"netIdScoped"`
-	EmailAddress       string   `json:"emailAddress"`
+	EmailAddress       []string `json:"emailAddress"`
 	PrimaryAffiliation string   `json:"primaryAffiliation"`
 	Affiliations       []string `json:"affiliations"`
 	ScopedAffiliations []string `json:"scopedAffiliations"`
@@ -101,7 +101,7 @@ func startTimer(duration time.Duration) {
 		for {
 			<-timer.C
 			fmt.Println("Token expired! Renewing...")
-
+			fmt.Println(time.Now().Format("2006-01-02 15:04:05"))
 			// Reset the timer to start again
 			timer.Reset(duration)
 			err = setGlobalToken(Token_path, user, pass)
@@ -182,6 +182,10 @@ func getUserBasicInfo(netId string) (*Person, error) {
 	// Example endpoint, replace with actual
 	endpoint := fmt.Sprintf("https://api-sandbox.byu.edu/byuapi/persons/v4/%s", netId)
 
+	var person Person
+	var first, middle, last string
+	//var email string
+
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -209,8 +213,6 @@ func getUserBasicInfo(netId string) (*Person, error) {
 		return nil, err
 	}
 
-	var person Person
-	var first, middle, last string
 	// Access nested fields from JSON structure
 
 	// NetID is located at result["basic"]["net_id"]["value"]
@@ -261,6 +263,27 @@ func getUserBasicInfo(netId string) (*Person, error) {
 		}
 
 		person.Name = first + " " + middle + " " + last
+
+		// There are three email addresses:
+		// 	personal_email_address,
+		//  student_email_address,
+		//  byu_intenral_email
+		if email, ok := basic["byu_internal_email"].(map[string]interface{}); ok {
+			if value, ok := email["value"].(string); ok {
+				person.EmailAddress = append(person.EmailAddress, value)
+			}
+		}
+
+		if email, ok := basic["student_email_address"].(map[string]interface{}); ok {
+			if value, ok := email["value"].(string); ok {
+				person.EmailAddress = append(person.EmailAddress, value)
+			}
+		}
+		if email, ok := basic["personal_email"].(map[string]interface{}); ok {
+			if value, ok := email["value"].(string); ok {
+				person.EmailAddress = append(person.EmailAddress, value)
+			}
+		}
 	}
 
 	if err := json.Unmarshal(body, &person); err != nil {
@@ -293,15 +316,6 @@ func main() {
 		log.Fatalf("Failed to get token: %v", err)
 	}
 	fmt.Println("Global Token:", Token)
-
-	// Get the basic user information and load into the Person struct
-	person, err := getUserBasicInfo("707501789")
-	if err != nil {
-		log.Fatalf("Failed to get user info: %v", err)
-	}
-	fmt.Printf("Person: %+v\n", person)
-
-	// Pull out the basic attributes
 
 	// Set up the HTTP server and routes using Gorilla Mux
 
