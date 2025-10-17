@@ -179,14 +179,13 @@ func setGlobalToken(endpoint, user, pass string) error {
 }
 
 // Group membership information
-func getUserGroupInfo(netId string) (*Person, error) {
+func getUserGroupInfo(person *Person, netId string) error {
 
 	endpoint := fmt.Sprintf("https://api-sandbox.byu.edu/byuapi/persons/v4/%s/group_memberships", netId)
 
-	var person Person
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+Token)
@@ -194,13 +193,13 @@ func getUserGroupInfo(netId string) (*Person, error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		fmt.Println("Response Status:", resp.Status)
-		return nil, fmt.Errorf("failed to get group membership info: %s", resp.Status)
+		return fmt.Errorf("failed to get group membership info: %s", resp.Status)
 	}
 
 	body, _ := io.ReadAll(resp.Body)
@@ -208,7 +207,7 @@ func getUserGroupInfo(netId string) (*Person, error) {
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
+		return err
 	}
 
 	//vals, ok := result["values"].(map[string]interface{})
@@ -233,22 +232,22 @@ func getUserGroupInfo(netId string) (*Person, error) {
 		}
 	}
 
-	return &person, nil
+	return nil
 }
 
 // Basic user information
-func getUserBasicInfo(netId string) (*Person, error) {
+func getUserBasicInfo(person *Person, netId string) error {
 
 	// Example endpoint, replace with actual
 	endpoint := fmt.Sprintf("https://api-sandbox.byu.edu/byuapi/persons/v4/%s", netId)
 
-	var person Person
+	//var person Person
 	var first, middle, last string
 	//var email string
 
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+Token)
@@ -256,13 +255,13 @@ func getUserBasicInfo(netId string) (*Person, error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		fmt.Println("Response Status:", resp.Status)
-		return nil, fmt.Errorf("failed to get user info: %s", resp.Status)
+		return fmt.Errorf("failed to get user info: %s", resp.Status)
 	}
 
 	body, _ := io.ReadAll(resp.Body)
@@ -270,7 +269,7 @@ func getUserBasicInfo(netId string) (*Person, error) {
 	//fmt.Println("NetId:", body.Basic.NetID.Value)
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
+		return err
 	}
 
 	// Access nested fields from JSON structure
@@ -347,11 +346,11 @@ func getUserBasicInfo(netId string) (*Person, error) {
 	}
 
 	if err := json.Unmarshal(body, &person); err != nil {
-		return nil, err
+		return err
 	}
 	//	person.netId =
 	fmt.Println(person)
-	return &person, nil
+	return nil
 }
 
 func main() {
@@ -395,7 +394,7 @@ func main() {
 // initDB initializes the database connection
 
 func eduPerson(w http.ResponseWriter, r *http.Request) {
-	log.Println("Test called")
+	person := Person{}
 
 	// Get the byuId from the query parameters
 	byuId := r.URL.Query().Get("byuId")
@@ -405,7 +404,7 @@ func eduPerson(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch user info using the provided byuId
-	person, err := getUserBasicInfo(byuId)
+	err := getUserBasicInfo(&person, byuId)
 	if err != nil {
 		log.Printf("Failed to get user info: %v", err)
 		http.Error(w, "Failed to retrieve user info", http.StatusInternalServerError)
@@ -413,7 +412,7 @@ func eduPerson(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch user group memberships using the provided byuId
-	person, err = getUserGroupInfo(byuId)
+	err = getUserGroupInfo(&person, byuId)
 	if err != nil {
 		log.Printf("Failed to get group info: %v", err)
 		http.Error(w, "Failed to retrieve group info", http.StatusInternalServerError)
