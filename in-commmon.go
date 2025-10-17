@@ -58,6 +58,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -181,6 +182,24 @@ func setGlobalToken(endpoint, user, pass string) error {
 // Group membership information
 func getUserGroupInfo(person *Person, netId string) error {
 
+	// Define the in-Common affiliation 'triggers'
+	faculty, staff, student, alum, member, affiliate, employee := false, false, false, false, false, false, false
+
+	faculty_array := []string{"FULL TIME FACULTY", "CES PERSONNEL", "ROTC", "POST DOC", "VISITING FACULTY", "VISITING SCHOLAR", "PART TIME FACULTY", "AFFILIATE FACULTY"}
+
+	staff_array := []string{"FULL TIME STAFF", "PART TIME STAFF", "Part Time Contract", "PSP", "PURCHASING", "TRAVEL SERVICES", "COOPERATING PROF", "LDS PHILANTHROPIES", "LDS SOC SERV", "CES COMMISSIONERS OFFICE", "EVENING SCHOOL INSTRUCTOR", "INDEPENDENT STUDY INSTRUCTOR", "SALT LAKE CENTER INSTRUCTOR", "CONTINUING ED CONTRACT"}
+
+	student_array := []string{"aerstd", "FULL TIME STUDENT FRESHMAN", "FULL TIME STUDENT SOPHOMORE", "FULL TIME STUDENT JUNIOR", "FULL TIME STUDENT SENIOR", "BGS", "MASTERS PROGRAM", "DOCTORATE PROGRAM", "PART TIME STUDENT", "POST BACCALAUREATE NON DEGREE", "AUDIT", "CONCURRENT ENROLLMENT", "ACADEMIC EXCHANGE", "ELC", "EVENING SCHOOL", "INDEPENDENT STUDY", "SALT LAKE CENTER STUDENT", "VISITING STUDENT"}
+
+	alum_array := []string{"GRADUATED ALUMNI", "FORMER STD--24 COMPLETED HRS"}
+
+	member_array := []string{"FULL TIME FACULTY", "CES PERSONNEL", "ROTC", "POST DOC", "VISITING FACULTY", "VISITING SCHOLAR", "PART TIME FACULTY", "AFFILIATE FACULTY", "aerstd", "FULL TIME STUDENT FRESHMAN", "FULL TIME STUDENT SOPHOMORE", "FULL TIME STUDENT JUNIOR", "FULL TIME STUDENT SENIOR", "BGS", "MASTERS PROGRAM", "DOCTORATE PROGRAM", "PART TIME STUDENT", "POST BACCALAUREATE NON DEGREE", "AUDIT", "CONCURRENT ENROLLMENT", "ACADEMIC EXCHANGE", "ELC", "EVENING SCHOOL", "INDEPENDENT STUDY", "SALT LAKE CENTER STUDENT", "VISITING STUDENT", "FULL TIME STAFF", "PART TIME STAFF", "Part Time Contract", "PSP", "PURCHASING", "TRAVEL SERVICES", "COOPERATING PROF", "LDS PHILANTHROPIES", "LDS SOC SERV", "CES COMMISSIONERS OFFICE", "EVENING SCHOOL INSTRUCTOR", "INDEPENDENT STUDY INSTRUCTOR", "SALT LAKE CENTER INSTRUCTOR", "CONTINUING ED CONTRACT"}
+
+	affiliate_array := []string{"RETIREE", "CRB", "RETIREE SPOUSE", "SURVIVING SPOUSE", "SURVIVING SPOUSE SP", "BYU BENEFITTED", "AFFILIATE FACULTY", "GRADUATED ALUMNI", "EMPLOYEE SPOUSE", "EMPLOYEE DEPENDENT", "SEMINARIES AND INSTITUTES", "PRESIDENTS LEADERSHIP COUNCIL", "BYU WARDS AND STAKES", "SERVICE REPRESENTATIVES", "MTC_Branch", "MTC VOLUNTEER", "WELLS FARGO", "BEEHIVE CLOTHING", "RETIREE DEPENDENT", "STUDENT SPOUSE", "STUDENT DEPENDENT", "FORMER STD--24 COMPLETED HRS", "FULL TIME MISSIONARIES", "FRIENDS OF THE LIBRARY", "DONOR", "NASGuest", "CONTRACT WORKER"}
+
+	employee_array := []string{"FULL TIME FACULTY", "CES PERSONNEL", "ROTC", "POST DOC", "VISITING FACULTY", "VISITING SCHOLAR", "PART TIME FACULTY", "AFFILIATE FACULTY", "FULL TIME STAFF", "PART TIME STAFF", "Part Time Contract", "PSP", "PURCHASING", "TRAVEL SERVICES", "COOPERATING PROF", "LDS PHILANTHROPIES", "LDS SOC SERV", "CES COMMISSIONERS OFFICE", "EVENING SCHOOL INSTRUCTOR", "INDEPENDENT STUDY INSTRUCTOR", "SALT LAKE CENTER INSTRUCTOR", "CONTINUING ED CONTRACT"}
+
+	// Persons V4 API endpoint for group memberships
 	endpoint := fmt.Sprintf("https://api-sandbox.byu.edu/byuapi/persons/v4/%s/group_memberships", netId)
 
 	req, err := http.NewRequest("GET", endpoint, nil)
@@ -225,11 +244,48 @@ func getUserGroupInfo(person *Person, netId string) error {
 
 		if groupID, ok := item["group_id"].(map[string]interface{}); ok {
 			if value, ok := groupID["value"].(string); ok {
-				person.Affiliations = append(person.Affiliations, value)
-				person.ScopedAffiliations = append(person.ScopedAffiliations, value+"@byu.edu")
+				// Check to see which affilations to add.
+				faculty = faculty || slices.Contains(faculty_array, value)
+				staff = staff || slices.Contains(staff_array, value)
+				student = student || slices.Contains(student_array, value)
+				alum = alum || slices.Contains(alum_array, value)
+				member = member || slices.Contains(member_array, value)
+				affiliate = affiliate || slices.Contains(affiliate_array, value)
+				employee = employee || slices.Contains(employee_array, value)
+				//				person.Affiliations = append(person.Affiliations, value)
+				//				person.ScopedAffiliations = append(person.ScopedAffiliations, value+"@byu.edu")
 				fmt.Println("group_id:", value)
 			}
 		}
+	}
+
+	if faculty {
+		person.Affiliations = append(person.Affiliations, "faculty")
+		person.ScopedAffiliations = append(person.ScopedAffiliations, "faculty@byu.edu")
+	}
+	if staff {
+		person.Affiliations = append(person.Affiliations, "staff")
+		person.ScopedAffiliations = append(person.ScopedAffiliations, "staff@byu.edu")
+	}
+	if student {
+		person.Affiliations = append(person.Affiliations, "student")
+		person.ScopedAffiliations = append(person.ScopedAffiliations, "student@byu.edu")
+	}
+	if alum {
+		person.Affiliations = append(person.Affiliations, "alum")
+		person.ScopedAffiliations = append(person.ScopedAffiliations, "alum@byu.edu")
+	}
+	if member {
+		person.Affiliations = append(person.Affiliations, "member")
+		person.ScopedAffiliations = append(person.ScopedAffiliations, "member@byu.edu")
+	}
+	if affiliate {
+		person.Affiliations = append(person.Affiliations, "affiliate")
+		person.ScopedAffiliations = append(person.ScopedAffiliations, "affiliate@byu.edu")
+	}
+	if employee {
+		person.Affiliations = append(person.Affiliations, "employee")
+		person.ScopedAffiliations = append(person.ScopedAffiliations, "employee@byu.edu")
 	}
 
 	return nil
