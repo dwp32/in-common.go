@@ -3,10 +3,41 @@
 in-Common attributes
 
 INPUTS:  netId
-OUTPUTS: eduPersonPrimaryAffiliation, eduPersonAffiliation, eduPersonScopedAffiliation, name, preferredFirstName
+OUTPUTS: eduPerson
+
+Example:
+
+/api/eduPerson?byuid=707501789
+
+{
+  "netId": "dwp32",
+  "netIdScoped": "dwp32@byu.edu",
+  "emailAddress": [
+    "dwp32@byu.edu",
+    ""
+  ],
+  "primaryAffiliation": "employee",
+  "affiliations": [
+    "staff",
+    "alum",
+    "member",
+    "affiliate",
+    "employee"
+  ],
+  "scopedAffiliations": [
+    "staff@byu.edu",
+    "alum@byu.edu",
+    "member@byu.edu",
+    "affiliate@byu.edu",
+    "employee@byu.edu"
+  ],
+  "name": "David W Palica",
+  "preferredFirstName": "Dave"
+}
+
 
 This code is to return the following attributes through an web api call:
-
+Note that BYU does not use 'contractor' or 'library-walk-in' affiliations, but they are included here for completeness.
 	/api/eduPersonPrimaryAffiliation - return one of the following:
 		faculty,
 		staff,
@@ -18,31 +49,6 @@ This code is to return the following attributes through an web api call:
 		contractor,
 		library-walk-in
 
-	/api/eduPersonAffiliation - return one or more of the following:
-		faculty,
-		staff,
-		student,
-		alum,
-		member,
-		affiliate,
-		employee,
-		contractor,
-		library-walk-in
-
-	/api/eduPersonScopedAffiliation	- return one or more of the following:
-		faculty@byu.edu,
-		staff@byu.edu,
-		student@byu.edu,
-		alum@byu.edu,
-		member@byu.edu,
-		affiliate@byu.edu,
-		employee@byu.edu,
-		contractor@byu.edu
-		library-walk-in@byu.edu
-
-	/api/name	 - return the user's full name
-
-	/api/preferredFirstName	- return the user's preferred first name
 
 	/api/eduPerson - return all of the above attributes
 
@@ -185,6 +191,8 @@ func getUserGroupInfo(person *Person, netId string) error {
 	// Define the in-Common affiliation 'triggers'
 	faculty, staff, student, alum, member, affiliate, employee := false, false, false, false, false, false, false
 
+	// Define the arrays of group IDs that correspond to each affiliation
+	// (pulled from CAS5 /byu-custom/src/main/java/edu/byu/cas/custom/attributes/BYUAttributesSource.java)
 	faculty_array := []string{"FULL TIME FACULTY", "CES PERSONNEL", "ROTC", "POST DOC", "VISITING FACULTY", "VISITING SCHOLAR", "PART TIME FACULTY", "AFFILIATE FACULTY"}
 
 	staff_array := []string{"FULL TIME STAFF", "PART TIME STAFF", "Part Time Contract", "PSP", "PURCHASING", "TRAVEL SERVICES", "COOPERATING PROF", "LDS PHILANTHROPIES", "LDS SOC SERV", "CES COMMISSIONERS OFFICE", "EVENING SCHOOL INSTRUCTOR", "INDEPENDENT STUDY INSTRUCTOR", "SALT LAKE CENTER INSTRUCTOR", "CONTINUING ED CONTRACT"}
@@ -224,13 +232,13 @@ func getUserGroupInfo(person *Person, netId string) error {
 	body, _ := io.ReadAll(resp.Body)
 	fmt.Println("Raw group info response:", string(body)) // helpful for debugging
 
+	// Convert the data in to a map for processing (ie, dynamic JSON parsing)
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return err
 	}
 
-	//vals, ok := result["values"].(map[string]interface{})
-
+	// Access the "values" array from the JSON structure
 	vals, ok := result["values"].([]interface{})
 	if !ok {
 		log.Fatal("response does not contain 'values' array")
@@ -242,6 +250,9 @@ func getUserGroupInfo(person *Person, netId string) error {
 			continue
 		}
 
+		// This is where we pull out the affiliation information
+		// Note that you must do a logical OR so that multiple group_ids can set the same affiliation
+		// Otherwise you will only get the last one processed.
 		if groupID, ok := item["group_id"].(map[string]interface{}); ok {
 			if value, ok := groupID["value"].(string); ok {
 				// Check to see which affilations to add.
