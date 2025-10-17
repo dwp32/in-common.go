@@ -178,7 +178,67 @@ func setGlobalToken(endpoint, user, pass string) error {
 	return nil
 }
 
+// Group membership information
+func getUserGroupInfo(netId string) (*Person, error) {
+
+	endpoint := fmt.Sprintf("https://api-sandbox.byu.edu/byuapi/persons/v4/%s/group_memberships", netId)
+
+	var person Person
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+Token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Println("Response Status:", resp.Status)
+		return nil, fmt.Errorf("failed to get group membership info: %s", resp.Status)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	fmt.Println("Raw group info response:", string(body)) // helpful for debugging
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	//vals, ok := result["values"].(map[string]interface{})
+
+	vals, ok := result["values"].([]interface{})
+	if !ok {
+		log.Fatal("response does not contain 'values' array")
+	}
+
+	for _, v := range vals {
+		item, ok := v.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if groupID, ok := item["group_id"].(map[string]interface{}); ok {
+			if value, ok := groupID["value"].(string); ok {
+				person.Affiliations = append(person.Affiliations, value)
+				person.ScopedAffiliations = append(person.ScopedAffiliations, value+"@byu.edu")
+				fmt.Println("group_id:", value)
+			}
+		}
+	}
+
+	return &person, nil
+}
+
+// Basic user information
 func getUserBasicInfo(netId string) (*Person, error) {
+
 	// Example endpoint, replace with actual
 	endpoint := fmt.Sprintf("https://api-sandbox.byu.edu/byuapi/persons/v4/%s", netId)
 
@@ -349,6 +409,14 @@ func eduPerson(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Failed to get user info: %v", err)
 		http.Error(w, "Failed to retrieve user info", http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch user group memberships using the provided byuId
+	person, err = getUserGroupInfo(byuId)
+	if err != nil {
+		log.Printf("Failed to get group info: %v", err)
+		http.Error(w, "Failed to retrieve group info", http.StatusInternalServerError)
 		return
 	}
 
