@@ -455,10 +455,11 @@ func getUserPrimaryAffiliation(person *Person, netId string) error {
 		return err
 	}
 	// Access the "primary_affiliation" field from the JSON structure
-	if primaryAffiliation, ok := result["primary_affiliation"].(map[string]interface{}); ok {
+	if primaryAffiliation, ok := result["primary_role_when_issued"].(map[string]interface{}); ok {
 		if value, ok := primaryAffiliation["value"].(string); ok {
 			fmt.Println("Primary Affiliation:", value)
 			person.PrimaryAffiliation = value
+
 		}
 	}
 	return nil
@@ -527,6 +528,14 @@ func eduPerson(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Failed to get group info: %v", err)
 		http.Error(w, "Failed to retrieve group info", http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch the primary affiliation using the provided byuId
+	err = getUserPrimaryAffiliation(&person, byuId)
+	if err != nil {
+		log.Printf("Failed to get primary affiliation: %v", err)
+		http.Error(w, "Failed to retrieve primary affiliation", http.StatusInternalServerError)
 		return
 	}
 
