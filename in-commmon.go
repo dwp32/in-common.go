@@ -71,8 +71,13 @@ import (
 	"github.com/gorilla/mux"
 )
 
-var Token_path = "https://api-sandbox.byu.edu/token" // Sandbox URL
-// var Token_path = "https://api.byu.edu/edu/token" // Production URL
+// Sandbox settings
+var Token_url = "https://api-sandbox.byu.edu/token" // Sandbox URL
+var Token_file = "/Users/dwp32/APICreds/in-common-sandbox.json"
+
+// Production settings
+//var Token_url = "https://api.byu.edu/edu/token" // Production URL
+//var Token_file = "/Users/dwp32/APICreds/in-common-prod.json"
 
 var Token string
 
@@ -98,7 +103,8 @@ func startTimer(duration time.Duration) {
 	timer := time.NewTimer(duration)
 
 	// Load API credentials from JSON file
-	user, pass, err := loadAPICreds("/Users/dwp32/APICreds/in-common.json")
+	//user, pass, err := loadAPICreds("/Users/dwp32/APICreds/in-common.json")
+	user, pass, err := loadAPICreds(Token_file)
 	fmt.Println("User:", user)
 	fmt.Println("Pass:", pass)
 	if err != nil {
@@ -111,7 +117,7 @@ func startTimer(duration time.Duration) {
 			fmt.Println(time.Now().Format("2006-01-02 15:04:05"))
 			// Reset the timer to start again
 			timer.Reset(duration)
-			err = setGlobalToken(Token_path, user, pass)
+			err = setGlobalToken(Token_url, user, pass)
 			fmt.Println("Token is now: ", Token)
 		}
 	}()
@@ -119,7 +125,7 @@ func startTimer(duration time.Duration) {
 
 func loadAPICreds(filename string) (string, string, error) {
 
-	data, err := os.ReadFile("/Users/dwp32/APICreds/in-common.json")
+	data, err := os.ReadFile(Token_file)
 	if err != nil {
 		return "", "", err
 	}
@@ -477,7 +483,7 @@ func main() {
 	}
 
 	// Set the initial global token
-	err = setGlobalToken(Token_path, user, pass)
+	err = setGlobalToken(Token_url, user, pass)
 
 	// Renew the global token as needed. Here we set it to renew every 10 seconds for testing purposes. In production, set it to 3500 seconds (just before the 1 hour expiration).
 	// The timer runs in a separate goroutine.
