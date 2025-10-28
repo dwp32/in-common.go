@@ -420,6 +420,50 @@ func getUserBasicInfo(person *Person, netId string) error {
 	return nil
 }
 
+// ID card information - primary affiliation
+
+func getUserPrimaryAffiliation(person *Person, netId string) error {
+
+	// Example endpoint, replace with actual
+	endpoint := fmt.Sprintf("https://api-sandbox.byu.edu/byuapi/persons/v4/%s/id_card", netId)
+
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+Token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Println("Response Status:", resp.Status)
+		return fmt.Errorf("failed to get ID card info: %s", resp.Status)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	fmt.Println("Raw ID card info response:", string(body)) // helpful for debugging
+
+	// Convert the data in to a map for processing (ie, dynamic JSON parsing)
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return err
+	}
+	// Access the "primary_affiliation" field from the JSON structure
+	if primaryAffiliation, ok := result["primary_affiliation"].(map[string]interface{}); ok {
+		if value, ok := primaryAffiliation["value"].(string); ok {
+			fmt.Println("Primary Affiliation:", value)
+			person.PrimaryAffiliation = value
+		}
+	}
+	return nil
+}
+
 func main() {
 
 	// Load API credentials from JSON file
@@ -458,7 +502,7 @@ func main() {
 	http.ListenAndServe(":3000", gRouter)
 }
 
-// initDB initializes the database connection
+// Get basic eduPerson information
 
 func eduPerson(w http.ResponseWriter, r *http.Request) {
 	person := Person{}
