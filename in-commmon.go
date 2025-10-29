@@ -71,13 +71,12 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Sandbox settings
-var Token_url = "https://api-sandbox.byu.edu/token" // Sandbox URL
-var Token_file = "/Users/dwp32/APICreds/in-common-sandbox.json"
+// Environment settings for token and api base url
+var Token_file string
+var Token_url string
+var Base_url string
 
-// Production settings
-//var Token_url = "https://api.byu.edu/edu/token" // Production URL
-//var Token_file = "/Users/dwp32/APICreds/in-common-prod.json"
+const DEBUG = true
 
 var Token string
 
@@ -86,6 +85,7 @@ type APICreds struct {
 	APIPass string `json:"API_PASS"`
 }
 
+// This is the structure for the parts of eduPerson we are returning
 type Person struct {
 	NetID              string   `json:"netId"`
 	NetIDScoped        string   `json:"netIdScoped"`
@@ -97,33 +97,59 @@ type Person struct {
 	PreferredFirstName string   `json:"preferredFirstName"`
 }
 
-// This is the structure that contains all of the information. All or parts may be returned, depend
+// This function initializes environment-specific settings.  Default to 'sandbox'.
+func initialize(environment string) {
+	if environment == "production" {
+		Token_url = "https://api.byu.edu/token" // Production URL
+		Token_file = "/Users/dwp32/APICreds/in-common-prod.json"
+		Base_url = "https://api.byu.edu/byuapi/persons/v4/"
+	} else {
+		Token_url = "https://api-sandbox.byu.edu/token" // Sandbox URL
+		Token_file = "//Users/dwp32/APICreds/in-common-sandbox.json"
+		Base_url = "https://api-sandbox.byu.edu/byuapi/persons/v4/"
+	}
+}
 
+// This function is a timer to renew the API token before it expires.
 func startTimer(duration time.Duration) {
-	timer := time.NewTimer(duration)
+	ticker := time.NewTicker(duration)
 
-	// Load API credentials from JSON file
-	//user, pass, err := loadAPICreds("/Users/dwp32/APICreds/in-common.json")
-	user, pass, err := loadAPICreds(Token_file)
-	fmt.Println("User:", user)
-	fmt.Println("Pass:", pass)
+	// Load API credentials
+	user, pass, err := loadAPICreds()
 	if err != nil {
 		log.Fatalf("Failed to load API credentials: %v", err)
 	}
+
 	go func() {
-		for {
-			<-timer.C
+		for range ticker.C {
 			fmt.Println("Token expired! Renewing...")
 			fmt.Println(time.Now().Format("2006-01-02 15:04:05"))
-			// Reset the timer to start again
-			timer.Reset(duration)
-			err = setGlobalToken(Token_url, user, pass)
-			fmt.Println("Token is now: ", Token)
+
+			const maxRetries = 3
+			const retryDelay = 5 * time.Second
+			var success bool
+
+			for i := 0; i < maxRetries; i++ {
+				err = setGlobalToken(Token_url, user, pass)
+				if err == nil {
+					success = true
+					break
+				}
+				log.Printf("Token renewal attempt %d failed: %v", i+1, err)
+				time.Sleep(retryDelay)
+			}
+
+			if success {
+				fmt.Println("Token is now: ", Token)
+			} else {
+				log.Println("Token renewal failed after maximum retries.")
+			}
 		}
 	}()
 }
 
-func loadAPICreds(filename string) (string, string, error) {
+// This function loads API credentials from a JSON file.  This will have to be changed when I figure out how BYU deploys into AWS.
+func loadAPICreds() (string, string, error) {
 
 	data, err := os.ReadFile(Token_file)
 	if err != nil {
@@ -139,8 +165,8 @@ func loadAPICreds(filename string) (string, string, error) {
 	return creds.APIUser, creds.APIPass, nil
 }
 
+// This function sets the token used for API calls globally.  In the future, pass it in as a parameter.
 func setGlobalToken(endpoint, user, pass string) error {
-
 	var ok bool
 	// Build form body
 	form := url.Values{}
@@ -166,7 +192,9 @@ func setGlobalToken(endpoint, user, pass string) error {
 
 	// Read and decode the response
 	body, _ := io.ReadAll(resp.Body)
-	//fmt.Println("Raw response:", string(body)) // helpful for debugging
+	if DEBUG {
+		fmt.Println("Raw response:", string(body))
+	} // helpful for debugging
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to get token: %s", resp.Status)
@@ -183,15 +211,17 @@ func setGlobalToken(endpoint, user, pass string) error {
 		// Try alternate key just in case
 		Token, ok = result["token"].(string)
 		if !ok {
-			return fmt.Errorf("Token not found in response")
+			return fmt.Errorf("token not found in response")
 		}
 	}
+	// Print out when the token was obtained
+	fmt.Println("Token obtained at:", time.Now().Format("2006-01-02 15:04:05"))
 
 	//	fmt.Println("Token:", Token)
 	return nil
 }
 
-// Group membership information
+// Group membership information from Persons V4 API https://api.byu.edu/byuapi/persons/v4/{netId}/group_memberships
 func getUserGroupInfo(person *Person, netId string) error {
 
 	// Define the in-Common affiliation 'triggers'
@@ -214,8 +244,8 @@ func getUserGroupInfo(person *Person, netId string) error {
 	employee_array := []string{"FULL TIME FACULTY", "CES PERSONNEL", "ROTC", "POST DOC", "VISITING FACULTY", "VISITING SCHOLAR", "PART TIME FACULTY", "AFFILIATE FACULTY", "FULL TIME STAFF", "PART TIME STAFF", "Part Time Contract", "PSP", "PURCHASING", "TRAVEL SERVICES", "COOPERATING PROF", "LDS PHILANTHROPIES", "LDS SOC SERV", "CES COMMISSIONERS OFFICE", "EVENING SCHOOL INSTRUCTOR", "INDEPENDENT STUDY INSTRUCTOR", "SALT LAKE CENTER INSTRUCTOR", "CONTINUING ED CONTRACT"}
 
 	// Persons V4 API endpoint for group memberships
-	endpoint := fmt.Sprintf("https://api-sandbox.byu.edu/byuapi/persons/v4/%s/group_memberships", netId)
 
+	endpoint := Base_url + netId + "/group_memberships"
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return err
@@ -236,7 +266,10 @@ func getUserGroupInfo(person *Person, netId string) error {
 	}
 
 	body, _ := io.ReadAll(resp.Body)
-	fmt.Println("Raw group info response:", string(body)) // helpful for debugging
+
+	if DEBUG { // helpful for debugging
+		fmt.Println("Raw group info response:", string(body))
+	}
 
 	// Convert the data in to a map for processing (ie, dynamic JSON parsing)
 	var result map[string]interface{}
@@ -271,7 +304,7 @@ func getUserGroupInfo(person *Person, netId string) error {
 				employee = employee || slices.Contains(employee_array, value)
 				//				person.Affiliations = append(person.Affiliations, value)
 				//				person.ScopedAffiliations = append(person.ScopedAffiliations, value+"@byu.edu")
-				fmt.Println("group_id:", value)
+				//fmt.Println("group_id:", value)
 			}
 		}
 	}
@@ -308,12 +341,11 @@ func getUserGroupInfo(person *Person, netId string) error {
 	return nil
 }
 
-// Basic user information
+// Basic user information from Persons V4 API https://api.byu.edu/byuapi/persons/v4/{netId}
 func getUserBasicInfo(person *Person, netId string) error {
 
 	// Example endpoint, replace with actual
-	endpoint := fmt.Sprintf("https://api-sandbox.byu.edu/byuapi/persons/v4/%s", netId)
-
+	endpoint := Base_url + netId
 	//var person Person
 	var first, middle, last string
 	//var email string
@@ -338,8 +370,10 @@ func getUserBasicInfo(person *Person, netId string) error {
 	}
 
 	body, _ := io.ReadAll(resp.Body)
-	//fmt.Println("Raw user info response:", string(body)) // helpful for debugging
-	//fmt.Println("NetId:", body.Basic.NetID.Value)
+
+	if DEBUG {
+		fmt.Println("Raw user info response:", string(body)) // helpful for debugging
+	}
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return err
@@ -356,6 +390,7 @@ func getUserBasicInfo(person *Person, netId string) error {
 			if ok {
 				fmt.Println("Processing NetID:", value)
 				person.NetID = value
+				fmt.Printf("Processing: %s", person.NetID)
 				person.NetIDScoped = value + "@byu.edu"
 			}
 		}
@@ -363,7 +398,7 @@ func getUserBasicInfo(person *Person, netId string) error {
 		// Extract Preferred First Name
 		if pfn, ok := basic["preferred_first_name"].(map[string]interface{}); ok {
 			if value, ok := pfn["value"].(string); ok {
-				fmt.Println("Preferred First Name:", value)
+				//fmt.Println("Preferred First Name:", value)
 				person.PreferredFirstName = value
 			}
 		}
@@ -373,7 +408,7 @@ func getUserBasicInfo(person *Person, netId string) error {
 		// Full first name
 		if firstname, ok := basic["first_name"].(map[string]interface{}); ok {
 			if value, ok := firstname["value"].(string); ok {
-				fmt.Println("First Name:", value)
+				//fmt.Println("First Name:", value)
 				first = value
 			}
 		}
@@ -381,7 +416,7 @@ func getUserBasicInfo(person *Person, netId string) error {
 		// Full middle name
 		if middlename, ok := basic["middle_name"].(map[string]interface{}); ok {
 			if value, ok := middlename["value"].(string); ok {
-				fmt.Println("Middle Name:", value)
+				//fmt.Println("Middle Name:", value)
 				middle = value
 			}
 		}
@@ -389,7 +424,7 @@ func getUserBasicInfo(person *Person, netId string) error {
 		// Full last name
 		if lastname, ok := basic["surname"].(map[string]interface{}); ok {
 			if value, ok := lastname["value"].(string); ok {
-				fmt.Println("Last Name:", value)
+				//fmt.Println("Last Name:", value)
 				last = value
 			}
 		}
@@ -422,17 +457,15 @@ func getUserBasicInfo(person *Person, netId string) error {
 		return err
 	}
 	//	person.netId =
-	fmt.Println(person)
+	//fmt.Println(person)
 	return nil
 }
 
-// ID card information - primary affiliation
-
+// ID card information - primary affiliation from Persons V4 API https://api.byu.edu/byuapi/persons/v4/{netId}/id_card
 func getUserPrimaryAffiliation(person *Person, netId string) error {
 
 	// Example endpoint, replace with actual
-	endpoint := fmt.Sprintf("https://api-sandbox.byu.edu/byuapi/persons/v4/%s/id_card", netId)
-
+	endpoint := Base_url + netId + "/id_card"
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return err
@@ -453,7 +486,7 @@ func getUserPrimaryAffiliation(person *Person, netId string) error {
 	}
 
 	body, _ := io.ReadAll(resp.Body)
-	fmt.Println("Raw ID card info response:", string(body)) // helpful for debugging
+	//fmt.Println("Raw ID card info response:", string(body)) // helpful for debugging
 
 	// Convert the data in to a map for processing (ie, dynamic JSON parsing)
 	var result map[string]interface{}
@@ -463,7 +496,7 @@ func getUserPrimaryAffiliation(person *Person, netId string) error {
 	// Access the "primary_affiliation" field from the JSON structure
 	if primaryAffiliation, ok := result["primary_role_when_issued"].(map[string]interface{}); ok {
 		if value, ok := primaryAffiliation["value"].(string); ok {
-			fmt.Println("Primary Affiliation:", value)
+			//fmt.Println("Primary Affiliation:", value)
 			person.PrimaryAffiliation = value
 
 		}
@@ -473,11 +506,13 @@ func getUserPrimaryAffiliation(person *Person, netId string) error {
 
 func main() {
 
+	if DEBUG {
+		log.Printf("\n\n***** Debug mode is ON *****")
+	}
 	// Load API credentials from JSON file
+	initialize("production")
+	user, pass, err := loadAPICreds()
 
-	user, pass, err := loadAPICreds("/Users/dwp32/APICreds/in-common.json")
-	fmt.Println("User:", user)
-	fmt.Println("Pass:", pass)
 	if err != nil {
 		log.Fatalf("Failed to load API credentials: %v", err)
 	}
@@ -492,14 +527,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to get token: %v", err)
 	}
-	fmt.Println("Global Token:", Token)
 
 	// Set up the HTTP server and routes using Gorilla Mux
 
 	// Create a new Gorilla Mux router
 	gRouter := mux.NewRouter()
 
-	// Define the routes and their handlers
+	// Define the routes and their handlersc
 
 	gRouter.HandleFunc("/api/eduPerson", eduPerson).Methods("GET")
 	gRouter.HandleFunc("/api/help", help).Methods("GET")
@@ -556,7 +590,7 @@ func eduPerson(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Optional: log the person struct to console
-	fmt.Printf("Person: %+v\n", person)
+	//fmt.Printf("Person: %+v\n", person)
 }
 
 func help(w http.ResponseWriter, r *http.Request) {
